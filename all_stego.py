@@ -7,26 +7,16 @@ from scipy.io import wavfile
 
 
 
-
 fs, data = wavfile.read('./arfa.wav') # load the data
-
 a = data.T[0] # I get the first track
-
-print(len(a))
-
 c = fft(a) # calculate fourier transform (complex numbers list)
-
 d = len(c) // 2  # you only need half of the fft list (real signal symmetry)
-
 
 plt.figure(1)
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 plt.plot(abs(c[:(d-1)]),'r')
 plt.show()
-
-
-
 
 spf = wave.open('./arfa.wav','r')
 

@@ -8,37 +8,27 @@ import random
 import numpy as np
 from scipy.fftpack import fft
 
-random.seed(30)
+random.seed(30) #random initializing
 
 fs, data = wavfile.read('./arfa.wav') # load the data
-
 a = data.T[0] # I get the first track
-
-print(len(a))
-
 c = fft(a) # calculate fourier transform (complex numbers list)
-
 d = len(c) // 2  # you only need half of the fft list (real signal symmetry)
-
 data_size = len(a)
-
-nu=500 #  герцы  mp3 средняя частота для человеского уха
+nu=500 #  Heirz mp3 average seq for human
 om = 2* math.pi*nu
 dt = 1. / fs
-
 Ts = len(a) // fs
+k = 1
+bound = 3
+dtau = 1 / (nu*k)
+
 
 spf = wave.open('./arfa.wav','r')
 
 fs, data = wavfile.read('./arfa.wav') # load the data
 
 a = data.T[0] # I get the first track
-
-
-k = 1
-bound = 3
-dtau = 1 / (nu*k)
-
 
 
 def randomVelocity(bound):
@@ -124,19 +114,16 @@ plt.title('Interpolaited transformed time array of coordinates')
 plt.plot(xvals, yinterp, '-x')
 plt.show()
 
+#Constants
 data_size = len(a)
-
 nu=500 #  герцы  mp3 средняя частота для человеского уха
 om = 2* math.pi*nu
 dt = 1. / fs
-
 NU = 25
 OM = 2* math.pi*NU
-m=0 #глубина модуляции - 0
+m=0  #глубина модуляции - 0
 Ts = len(a) // fs
-
 length = Ts*fs
-
 A = 2000
 
 fs, data = wavfile.read('./arfa.wav') # load the data
@@ -148,7 +135,6 @@ y = transformed_time_array[1]
 
 xvals_ext = np.linspace(0, 2*Ts, 2*length)
 yinterp = interpolaite(xvals_ext, x, y)
-
 hidden = [A * math.sin(om*yinterp[n]) for n in range(data_size)]
 
 plt.figure(10)
@@ -168,7 +154,6 @@ c = fft(mix) # calculate fourier transform (complex numbers list)
 
 d = len(c) // 2  # you only need half of the fft list (real signal symmetry)
 
-
 plt.figure(4)
 plt.title('Fourier transform on sound with sin')
 plt.xlabel('k')
@@ -182,7 +167,6 @@ fs, sound_after_convering_wav_mp3 = wavfile.read('./test_conver1.wav') # load th
 print(len(sound_after_convering_wav_mp3))
 
 y_rev = interpolaite(xvals_ext, y, x)
-
 
 xvals = np.linspace(0, Ts, length)
 mix_rev_after_convering = interpolaite(y_rev, xvals, sound_after_convering_wav_mp3)
@@ -253,8 +237,3 @@ plt.ylabel('Amplitude')
 plt.plot(abs(hidden_rev_fft[0:  20000]),'r')
 
 plt.show()
-
-
-
-
-
