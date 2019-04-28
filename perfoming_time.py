@@ -7,6 +7,20 @@ from numpy import array
 import random
 import numpy as np
 from scipy.fftpack import fft
+from pydub import AudioSegment
+
+
+def convert_to_wav():
+    sound = AudioSegment.from_file('/Users/evgeny/PycharmProjects/stego/output/file.mp3')
+    sound.export("/Users/evgeny/PycharmProjects/stego/output/result_file.wav", format="wav")
+    print("Converting to wav was finished")
+
+
+def convert_to_mp3():
+    sound = AudioSegment.from_file('/Users/evgeny/PycharmProjects/stego/with_mix_250.wav')
+    sound.export("/Users/evgeny/PycharmProjects/stego/output/file.mp3", format="mp3", bitrate="128k")
+    print("Converting to mp3 was finished")
+
 
 random.seed(30) #random initializing
 
@@ -38,7 +52,7 @@ def randomVelocity(bound):
 alpha = 2 / (bound + 1 / bound)
 tau = 0
 length = Ts * fs
-length1 = Ts*k*nu
+length1 = math.ceil(Ts*k*nu)
 
 def processTau(l):
     result = []
@@ -86,7 +100,7 @@ transformed_time_array = [[i * dtau for i in range(2 * length1)], processTau(2 *
 
 def interpolaite(args, x_values, y_values):
     m = 0
-    l = len(y_values)
+    l = len(x_values)
     interpolaite_array = [0] * len(args)
     is_exit = False
     for n in range(len(args)):
@@ -116,15 +130,13 @@ plt.show()
 
 #Constants
 data_size = len(a)
-nu=500 #  герцы  mp3 средняя частота для человеского уха
+nu=500 #  Heirz mp3 average seq for human
 om = 2* math.pi*nu
 dt = 1. / fs
-NU = 25
-OM = 2* math.pi*NU
 m=0  #глубина модуляции - 0
 Ts = len(a) // fs
 length = Ts*fs
-A = 2000
+A = 20
 
 fs, data = wavfile.read('./arfa.wav') # load the data
 
@@ -154,6 +166,7 @@ c = fft(mix) # calculate fourier transform (complex numbers list)
 
 d = len(c) // 2  # you only need half of the fft list (real signal symmetry)
 
+
 plt.figure(2)
 plt.title('Fourier transform on sound with sin')
 plt.xlabel('k')
@@ -161,15 +174,18 @@ plt.ylabel('Amplitude')
 plt.plot(abs(c[nu*Ts-100:nu*Ts+100]),'r')
 plt.show()
 
+convert_to_mp3()
+convert_to_wav()
 
-fs, sound_after_convering_wav_mp3 = wavfile.read('./test_conver1.wav') # load the data
+fs, sound_after_converting_wav_mp3 = wavfile.read('./output/result_file.wav') # load the data
 
-print(len(sound_after_convering_wav_mp3))
+input_sound_length = len(sound_after_converting_wav_mp3)
+graph_length = input_sound_length // 2
 
 y_rev = interpolaite(xvals_ext, y, x)
 
 xvals = np.linspace(0, Ts, length)
-mix_rev_after_convering = interpolaite(y_rev, xvals, sound_after_convering_wav_mp3)
+mix_rev_after_convering = interpolaite(y_rev, xvals, sound_after_converting_wav_mp3)
 mix_rev = interpolaite(y_rev, xvals, mix)
 sound_rev = interpolaite(y_rev, xvals,  sound)
 hidden_rev =  interpolaite(y_rev, xvals, hidden)
@@ -185,55 +201,55 @@ mix_fft = fft(mix)
 sound_fft = fft(sound)
 hidden_fft = fft(hidden)
 
-plt.figure(3)
+plt.subplot(3,3,1)
 plt.title('Mix')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(mix_fft[0:  20000]),'r')
+plt.plot(abs(mix_fft[0:  graph_length]),'r')
 
-plt.figure(4)
+plt.subplot(3,3,2)
 plt.title('Sound')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(sound_fft[0:  20000]),'r')
+plt.plot(abs(sound_fft[0:  graph_length]),'r')
 
-plt.figure(5)
+plt.subplot(3,3,3)
 plt.title('Hidden')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(hidden_fft[0:  20000]),'r')
+plt.plot(abs(hidden_fft[0:  graph_length]),'r')
 
 
-plt.figure(6)
+plt.subplot(3,3,4)
 plt.title('Fourier transform on reversed time sound with sin')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(mix_rev_converted_fft[0:  20000]),'r')
+plt.plot(abs(mix_rev_converted_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
 
 
-plt.figure(7)
+plt.subplot(3,3,5)
 plt.title("Mix rev")
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(mix_rev_fft[0:  20000]),'r')
+plt.plot(abs(mix_rev_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
 
-plt.figure(8)
+plt.subplot(3,3,6)
 plt.title("Clear signal rev")
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(sound_rev_fft[0:  20000]),'r')
+plt.plot(abs(sound_rev_fft[0:  graph_length]),'r')
 
-plt.figure(9)
+plt.subplot(3,3,7)
 plt.title("Hidden rev")
 plt.xlabel('k')
 plt.ylabel('Amplitude')
 #plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(hidden_rev_fft[0:  20000]),'r')
+plt.plot(abs(hidden_rev_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
 
 plt.show()
