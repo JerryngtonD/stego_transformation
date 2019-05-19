@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import ast
 import wave
 import math
+import cmath
 from numpy import array
 import random
 import numpy as np
@@ -38,7 +39,7 @@ Ts = len(a) // fs
 k = 1
 bound = 3
 dtau = 1 / (nu*k)
-A = 400
+A = 10
 alpha = 2 / (bound + 1 / bound)
 tau = 0
 length = Ts * fs
@@ -46,6 +47,8 @@ length1 = math.ceil(Ts*k*nu)
 min_freq = 500
 max_freq = 1000
 threshold_ratio = 0.5
+false_factor = 1.5
+true_factor = 1.5
 
 process_freq_count = 8
 fit_freq_count = 2
@@ -73,6 +76,24 @@ def processTau(l):
 
     return result
 
+#s- value of fft component of signal, a - value of component of hidden signal, r - module of wished level of mix signal
+def get_amplitude_value(s, a, r):
+    if r == 0:
+        return 0
+    phi = cmath.phase(s)
+    psi = cmath.phase(a)
+    print("углы", phi, psi)
+    print("косинус")
+    print(math.cos(psi + math.asin(abs(s/r)) * math.sin(phi - psi)))
+
+    return abs(r/a) * math.cos(math.asin(abs(s/r)) * math.sin(phi - psi)) - abs(s/a) * math.cos(phi - psi)
+
+print("test_func")
+s1= 3
+a1= 1j
+r= 5
+
+print(get_amplitude_value(s1, a1, r))
 
 transformed_time_array = [[i * dtau for i in range(2 * length1)], processTau(2 * length1)]
 
@@ -127,23 +148,24 @@ def interpolaite(args, x_values, y_values):
     return interpolaite_array
 
 
-def getSignalWithFreq(freq_array, time, cipher_bits):
+def getSignalWithFreq(freq_array, time, amplitudes_array):
     process = 0
     for i in range(len(all_work_freq)):
-        process += cipher_bits[i] * math.sin(2 * math.pi * freq_array[i] * time)
+        process += amplitudes_array[i] * math.sin(2 * math.pi * freq_array[i] * time)
 
-    return A * process
+    return process
 
 
 
 x = np.array(transformed_time_array[0][0:2000])
 y = np.array(transformed_time_array[1][0:2000])
 
-xvals = np.linspace(0, Ts * 1000 / length, 200)
-yinterp0 = interpolaite(xvals, x.tolist(), y.tolist())
+xvals_short = np.linspace(0, Ts * 1000 / length, 200)
+xvals = np.linspace(0, Ts, length)
+yinterp0 = interpolaite(xvals_short, x.tolist(), y.tolist())
 
 plt.title('Interpolaited transformed time array of coordinates')
-plt.plot(xvals, yinterp0, '-x')
+plt.plot(xvals_short, yinterp0, '-x')
 plt.show()
 
 fs, data = wavfile.read('./arfa.wav') # load the data
@@ -156,10 +178,56 @@ y = transformed_time_array[1]
 xvals_ext = np.linspace(0, 2*Ts, 2*length)
 yinterp = interpolaite(xvals_ext, x, y)
 
-#hidden = [A * math.sin(om*yinterp[n]) for n in range(data_size)]
-hidden = [getSignalWithFreq(all_work_freq, yinterp[n], all_provided_bits) for n in range(data_size)]
-hidden_before_transform = [getSignalWithFreq(all_work_freq, xvals_ext[n], all_provided_bits) for n in range(data_size)]
+y_rev = interpolaite(xvals_ext, y, x)
+sound_rev = interpolaite(y_rev, xvals,  sound)
+sound_rev_fft = fft(sound_rev)
+print("rev_fft")
+print(sound_rev_fft[0: 50])
 
+signal_amplitudes_on_freq_array = [sound_rev_fft[2 * Ts * all_work_freq[i]] for i in range(len(all_provided_bits))]
+max_amplitude_on_signal = max(np.absolute(np.array(signal_amplitudes_on_freq_array)))
+false_value = max_amplitude_on_signal * false_factor
+true_value = false_value * true_factor
+
+test_all_true_values_array = [1] * len(all_provided_bits)
+test_true_array_signal = [getSignalWithFreq(all_work_freq, yinterp[n], test_all_true_values_array) for n in range(data_size)]
+test_true_array_signal_rev = interpolaite(y_rev, xvals, test_true_array_signal)
+test_true_array_signal_rev_fft = fft(test_true_array_signal_rev)
+
+
+test_true_amplitudes_on_freq_array = [test_true_array_signal_rev_fft[2 * Ts * all_work_freq[i]] for i in range(len(all_provided_bits))]
+
+
+
+
+
+# amplitudes_array = [true_value - signal_amplitudes_on_freq_array[i] if (cipher_bits[i] > 0) else 0 for i in range(len(cipher_bits))]
+# amplitudes_service_bits = [false_value - signal_amplitudes_on_freq_array[len(all_provided_bits) - 2],
+#                            true_value - signal_amplitudes_on_freq_array[len(all_provided_bits) - 1]]
+# amplitudes_array += amplitudes_service_bits
+
+
+r_amplitudes_array = [true_value if (cipher_bits[i] > 0) else 0 for i in range(len(cipher_bits))]
+r_amplitudes_service_bits = [false_value , true_value]
+r_amplitudes_array += r_amplitudes_service_bits
+
+amplitudes_array_for_adding = [get_amplitude_value(signal_amplitudes_on_freq_array[i], test_true_amplitudes_on_freq_array[i], r_amplitudes_array[i]) for i in range(len(signal_amplitudes_on_freq_array))]
+print("amplitudes for adding")
+print(amplitudes_array_for_adding)
+
+print("test")
+print([abs(signal_amplitudes_on_freq_array[i] + amplitudes_array_for_adding[i] * test_true_amplitudes_on_freq_array[i]) for i in range(len(signal_amplitudes_on_freq_array))])
+print("freq")
+print(test_true_amplitudes_on_freq_array)
+print("r_ampl")
+print(r_amplitudes_array)
+
+
+
+
+#hidden = [A * math.sin(om*yinterp[n]) for n in range(data_size)]
+hidden = [getSignalWithFreq(all_work_freq, yinterp[n], amplitudes_array_for_adding) for n in range(data_size)]
+hidden_before_transform = [getSignalWithFreq(all_work_freq, xvals_ext[n], amplitudes_array_for_adding) for n in range(data_size)]
 
 plt.figure(1)
 plt.title('Hidden before transform')
@@ -201,33 +269,36 @@ fs, sound_after_converting_wav_mp3 = wavfile.read('./output/result_file.wav') # 
 input_sound_length = len(sound_after_converting_wav_mp3)
 graph_length = input_sound_length // 22
 
-y_rev = interpolaite(xvals_ext, y, x)
 
-xvals = np.linspace(0, Ts, length)
 mix_rev_after_convering = interpolaite(y_rev, xvals, sound_after_converting_wav_mp3)
 mix_rev = interpolaite(y_rev, xvals, mix)
-sound_rev = interpolaite(y_rev, xvals,  sound)
 hidden_rev =  interpolaite(y_rev, xvals, hidden)
 
 length_mix_rev = len(mix_rev_after_convering)
 
 mix_rev_converted_fft = fft(mix_rev_after_convering)
 mix_rev_fft = fft(mix_rev)
-sound_rev_fft = fft(sound_rev)
+
 hidden_rev_fft = fft(hidden_rev)
 
 mix_fft = fft(mix)
 sound_fft = fft(sound)
 hidden_fft = fft(hidden)
 
-true_level = abs(mix_rev_converted_fft[2*Ts*max_freq])
+true_level = abs(mix_rev_converted_fft[2*Ts*all_work_freq[-1]])
+false_level = abs(mix_rev_converted_fft[2*Ts*all_work_freq[-2]])
+threshold_level = (true_level + false_level) / 2
+
+print("threshold level data")
+print(true_level)
+print(false_level)
+print(threshold_level)
 
 for i in range(len(all_provided_bits)):
-    print(abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]))
+    print("mix_rev_on","{" + str(i)  + "}" + " ",abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]))
 
-decoded_array = [abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]) > true_level * threshold_ratio for i in range(len(all_provided_bits))]
+decoded_array = [abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]) > threshold_level for i in range(len(all_provided_bits))]
 
-print(true_level)
 print(decoded_array)
 
 plt.subplot(3,3,1)
