@@ -1,6 +1,5 @@
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
-import ast
 import wave
 import math
 import cmath
@@ -10,156 +9,257 @@ import numpy as np
 from scipy.fftpack import fft
 from pydub import AudioSegment
 
-#TODO: Набор частот передачи вместо одной частоты (передача целого массива данных)
-#TODO: Автоматическое определение нулевого урвоня до передачи и введение калибровочных частот для любого типа звука
+# TODO: Набор частот передачи вместо одной частоты (передача целого массива данных)
+# TODO: Автоматическое определение нулевого урвоня до передачи и введение калибровочных частот для любого типа звука
+
+'''
+Конвертор для преобразования mp3-сигнала в wav
+'''
+
 
 def convert_to_wav():
-    sound = AudioSegment.from_file('/Users/evgeny/PycharmProjects/stego/output/file.mp3')
-    sound.export("/Users/evgeny/PycharmProjects/stego/output/result_file.wav", format="wav")
+    sound = AudioSegment.from_file('file.mp3')
+    sound.export("result_file.wav", format="wav")
     print("Converting to wav was finished")
 
 
+'''
+Конвертор для преобразования wav-сигнала в mp3
+'''
+
+
 def convert_to_mp3():
-    sound = AudioSegment.from_file('/Users/evgeny/PycharmProjects/stego/with_mix_250.wav')
-    sound.export("/Users/evgeny/PycharmProjects/stego/output/file.mp3", format="mp3", bitrate="128k")
+    sound = AudioSegment.from_file('with_mix_250.wav')
+    sound.export("file.mp3", format="mp3", bitrate="128k")
     print("Converting to mp3 was finished")
 
 
-random.seed(30) #random initializing
+'''
+Необходимо задать инициализацию генератора случайных чисел, чтобы при раскодировке
+и дальнейшем дебаге не сохранять массив случайных значений в processTau
+'''
+random.seed(30)  # random initializing
 
-fs, data = wavfile.read('./arfa.wav') # load the data
-a = data.T[0] # I get the first track
-c = fft(a) # calculate fourier transform (complex numbers list)
-d = len(c) // 2  # you only need half of the fft list (real signal symmetry)
+'''
+Загрузка файла: fs - частота дискретизации
+                data - информационные байты ауди-сигнала
+'''
+fs, data = wavfile.read('./arfa.wav')
+
+'''
+Аудио файл может иметь несколько дорожек или каналов,
+в нашем случае одна дорожка
+'''
+a = data.T[0]
+
+'''
+Быстрое преобразование Фурье для определения спектра частот
+Получаем лист комплексных значений
+'''
+c = fft(a)
+
+'''
+Для Фурье-образа действительнозначной функции (т.е. любого “реального” сигнала) 
+амплитудный спектр всегда является четной функцией, нам необходима лишь половина для работы
+'''
+d = len(c) // 2
+
+'''
+Исходный размер файла
+'''
 data_size = len(a)
-nu=500 #  Heirz mp3 average seq for human
-om = 2* math.pi*nu
+
+'''
+Средняя частота сигнала слышимая человеческоим ухом
+'''
+nu = 500
+
+'''
+Значение круговой частоты
+'''
+om = 2 * math.pi * nu
+
+'''
+Величина шага дискретизации
+'''
 dt = 1. / fs
+
+'''
+Длительность звуковой дорожки исходного файла
+'''
 Ts = len(a) // fs
+
+'''
+Коэффициент модуляции отклонения
+'''
 k = 1
+
+'''
+Граничный коэффициент - модуль отклонения (границы скорости течения времени)
+'''
 bound = 3
-dtau = 1 / (nu*k)
-A = 10
+
+'''
+Частота хода
+'''
+dtau = 1 / (nu * k)
+
+'''
+Коэффициент для расчета параметра tau
+'''
 alpha = 2 / (bound + 1 / bound)
-tau = 0
+
+
+'''
+Длительность сигнала
+'''
 length = Ts * fs
-length1 = math.ceil(Ts*k*nu)
+
+'''
+Длина единиц сигнала с учетом интерполяции по частоте дискретизации
+'''
+length1 = math.ceil(Ts * k * nu)
+
+'''
+Нижняя граница диапазона служебных частот для кодирования
+'''
 min_freq = 500
+
+'''
+Верхняя граница диапазона служебных частот для кодирования
+'''
 max_freq = 1000
+
+
+'''
+Коэффициент для рапознавания правильности амплитуды сигнала
+'''
 threshold_ratio = 0.5
-false_factor = 1.5
-true_factor = 1.5
 
-process_freq_count = 8
+'''
+Фактор-коэффициент для уровня 0
+'''
+false_factor = 1.1
+
+'''
+Фактор-коэффициент для уровня 1
+'''
+true_factor = 1.3
+
+'''
+Будем передавать 8 бит - для них 8 рабочих частот
+'''
+process_freq_count = 40
+
+'''
+2 частоты на алфавит передачи - в данном случае бинарный [0, 1]
+'''
 fit_freq_count = 2
-delta_freq = (max_freq - min_freq) / (process_freq_count + fit_freq_count - 1)
 
-all_work_freq = [math.ceil(min_freq + i * delta_freq) for i in range(process_freq_count + fit_freq_count)]
+'''
+Стегосообщение
+'''
+cipher_bits = [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1]
 
-cipher_bits = [1, 0, 0, 1, 1, 0, 0, 1]
+'''
+Все биты которые кодируем в сообщении
+'''
 all_provided_bits = cipher_bits + [0, 1]
 
-spf = wave.open('./arfa.wav','r')
+'''
+Шараметр дельты по частоте - шаг, с которым будем делить полосу частот [500; 1000]
+'''
+delta_freq = (max_freq - min_freq) / (process_freq_count + fit_freq_count - 1)
+
+'''
+Получаем все служебные частоты для передачи
+'''
+all_work_freq = [math.ceil(min_freq + i * delta_freq) for i in range(process_freq_count + fit_freq_count)]
+
+spf = wave.open('./arfa.wav', 'r')
 
 
-def randomVelocity(bound):
+'''
+Функция генерации рандомного скачка в границах для скорорости течения время 
+'''
+def get_random_velocity():
     return (1 / bound) + (bound - 1 / bound) * random.random()
 
 
-
+'''
+Параметр дельты по частоте - шаг, с которым будем делить полосу частот [500; 1000]
+'''
 def processTau(l):
     result = []
     tau = 0
     for i in range(l):
         result.append(tau)
-        tau += alpha * dtau * randomVelocity(bound)
+        tau += alpha * dtau * get_random_velocity()
 
     return result
 
-#s- value of fft component of signal, a - value of component of hidden signal, r - module of wished level of mix signal
+
+# s- value of fft component of signal, a - value of component of hidden signal, r - module of wished level of mix signal
+
+'''
+Функция получения добавочной амплитуды для достижения уровня 1
+'''
 def get_amplitude_value(s, a, r):
     if r == 0:
         return 0
     phi = cmath.phase(s)
     psi = cmath.phase(a)
-    print("углы", phi, psi)
-    print("косинус")
-    print(math.cos(psi + math.asin(abs(s/r)) * math.sin(phi - psi)))
 
-    return abs(r/a) * math.cos(math.asin(abs(s/r)) * math.sin(phi - psi)) - abs(s/a) * math.cos(phi - psi)
-
-print("test_func")
-s1= 3
-a1= 1j
-r= 5
-
-print(get_amplitude_value(s1, a1, r))
-
-transformed_time_array = [[i * dtau for i in range(2 * length1)], processTau(2 * length1)]
-
-# with open('transformed_time.txt', 'w') as f:
-#     for item in transformed_time_array:
-#         f.write(str(item))
-#
-#
-#
-# with open('transformed_time.txt', 'r') as f:
-#     transformed_time_array = ast.literal_eval(f.read())
+    return abs(r / a) * math.cos(math.asin(abs(s / r)) * math.sin(phi - psi)) - abs(s / a) * math.cos(phi - psi)
 
 
-# plt.figure(3)
-# plt.title('Transformed time array')
-# plt.plot(transformed_time_array[1][0:200])
-# plt.show()
-#
-# x = np.array(transformed_time_array[0][0:200])
-# y = np.array(transformed_time_array[1][0:200])
-# xvals = np.linspace(0, Ts * 200 / length, 50)
-# yinterp = np.interp(xvals, x, y)
-# plt.title('Interpolaited y coordinates')
-# plt.plot(xvals, yinterp, '-x')
-# plt.show()
-#
-# y = np.array(transformed_time_array[0][0:200])
-# x = np.array(transformed_time_array[1][0:200])
-# xvals = np.linspace(0, Ts * 200 / length, 50)
-# yinterp = np.interp(xvals, x, y)
-# plt.title("Reversed interpolaited process of coordinates")
-# plt.plot(xvals, yinterp, '-x')
-# plt.show()
-
+'''
+Функция интерполяции диапазона значений 
+'''
 def interpolaite(args, x_values, y_values):
     m = 0
     l = len(x_values)
     interpolaite_array = [0] * len(args)
     is_exit = False
     for n in range(len(args)):
-        if (is_exit):
+        if is_exit:
             break
         while (x_values[m + 1] < args[n]):
             m += 1
-            if ((m + 1 >= l - 1)):
+            if m + 1 >= l - 1:
                 is_exit = True
                 break
         else:
             value = y_values[m] + (y_values[m + 1] - y_values[m]) * (args[n] - x_values[m]) / (
-                        x_values[m + 1] - x_values[m])
+                    x_values[m + 1] - x_values[m])
             interpolaite_array[n] = value
     return interpolaite_array
 
 
-def getSignalWithFreq(freq_array, time, amplitudes_array):
+'''
+Функция получения массива сигналов для встраивания
+'''
+def get_signal_with_freq(freq_array, time, amplitudes_array):
     process = 0
     for i in range(len(all_work_freq)):
         process += amplitudes_array[i] * math.sin(2 * math.pi * freq_array[i] * time)
 
     return process
 
+'''
+Получаем массив преобразованного времени
+'''
+transformed_time_array = [[i * dtau for i in range(2 * length1)], processTau(2 * length1)]
 
-
+'''
+Преобразовании координаты времени и значений от времени
+'''
 x = np.array(transformed_time_array[0][0:2000])
 y = np.array(transformed_time_array[1][0:2000])
 
+'''
+Для построения графиков достаточно меньшей области интервала
+'''
 xvals_short = np.linspace(0, Ts * 1000 / length, 200)
 xvals = np.linspace(0, Ts, length)
 yinterp0 = interpolaite(xvals_short, x.tolist(), y.tolist())
@@ -168,79 +268,95 @@ plt.title('Interpolaited transformed time array of coordinates')
 plt.plot(xvals_short, yinterp0, '-x')
 plt.show()
 
-fs, data = wavfile.read('./arfa.wav') # load the data
+fs, data = wavfile.read('./arfa.wav')
 
-sound = data.T[0] # I get the first track
-
+sound = data.T[0]
 x = transformed_time_array[0]
 y = transformed_time_array[1]
 
-xvals_ext = np.linspace(0, 2*Ts, 2*length)
+xvals_ext = np.linspace(0, 2 * Ts, 2 * length)
 yinterp = interpolaite(xvals_ext, x, y)
-
 y_rev = interpolaite(xvals_ext, y, x)
-sound_rev = interpolaite(y_rev, xvals,  sound)
-sound_rev_fft = fft(sound_rev)
-print("rev_fft")
-print(sound_rev_fft[0: 50])
 
+'''
+Звук с координатами в преобразованном времени
+'''
+sound_rev = interpolaite(y_rev, xvals, sound)
+
+'''
+Фурье преобразование от звука в преобразованном времени
+'''
+sound_rev_fft = fft(sound_rev)
+
+'''
+
+Получаем значения амплитуд сигналов, которые уже имеются в спектре, для того чтобы узнать сколько необходимо
+до уверенного сигнала
+'''
 signal_amplitudes_on_freq_array = [sound_rev_fft[2 * Ts * all_work_freq[i]] for i in range(len(all_provided_bits))]
+
+'''
+Максимальная амплитуда из всех сигналов со служебными частотами, ее возьмем за эталон
+'''
 max_amplitude_on_signal = max(np.absolute(np.array(signal_amplitudes_on_freq_array)))
 false_value = max_amplitude_on_signal * false_factor
 true_value = false_value * true_factor
 
+'''
+Смотрим максимальные уровни шумов на всех служебных частотах
+'''
 test_all_true_values_array = [1] * len(all_provided_bits)
-test_true_array_signal = [getSignalWithFreq(all_work_freq, yinterp[n], test_all_true_values_array) for n in range(data_size)]
+test_true_array_signal = [get_signal_with_freq(all_work_freq, yinterp[n], test_all_true_values_array) for n in
+                          range(data_size)]
 test_true_array_signal_rev = interpolaite(y_rev, xvals, test_true_array_signal)
 test_true_array_signal_rev_fft = fft(test_true_array_signal_rev)
 
-
-test_true_amplitudes_on_freq_array = [test_true_array_signal_rev_fft[2 * Ts * all_work_freq[i]] for i in range(len(all_provided_bits))]
-
-
-
-
-
-# amplitudes_array = [true_value - signal_amplitudes_on_freq_array[i] if (cipher_bits[i] > 0) else 0 for i in range(len(cipher_bits))]
-# amplitudes_service_bits = [false_value - signal_amplitudes_on_freq_array[len(all_provided_bits) - 2],
-#                            true_value - signal_amplitudes_on_freq_array[len(all_provided_bits) - 1]]
-# amplitudes_array += amplitudes_service_bits
+test_true_amplitudes_on_freq_array = [test_true_array_signal_rev_fft[2 * Ts * all_work_freq[i]] for i in
+                                      range(len(all_provided_bits))]
 
 
 r_amplitudes_array = [true_value if (cipher_bits[i] > 0) else 0 for i in range(len(cipher_bits))]
-r_amplitudes_service_bits = [false_value , true_value]
+r_amplitudes_service_bits = [false_value, true_value]
 r_amplitudes_array += r_amplitudes_service_bits
 
-amplitudes_array_for_adding = [get_amplitude_value(signal_amplitudes_on_freq_array[i], test_true_amplitudes_on_freq_array[i], r_amplitudes_array[i]) for i in range(len(signal_amplitudes_on_freq_array))]
+
+'''
+Вычисляем сколько нужно добавить амплитуд к сигналам, чтобы в обратном преобразовании к обычному времени видеть пики
+выше эталонной амплитуды для уверенного приема
+'''
+amplitudes_array_for_adding = [
+    get_amplitude_value(signal_amplitudes_on_freq_array[i], test_true_amplitudes_on_freq_array[i],
+                        r_amplitudes_array[i]) for i in range(len(signal_amplitudes_on_freq_array))]
+
 print("amplitudes for adding")
 print(amplitudes_array_for_adding)
 
 print("test")
-print([abs(signal_amplitudes_on_freq_array[i] + amplitudes_array_for_adding[i] * test_true_amplitudes_on_freq_array[i]) for i in range(len(signal_amplitudes_on_freq_array))])
+print([abs(signal_amplitudes_on_freq_array[i] + amplitudes_array_for_adding[i] * test_true_amplitudes_on_freq_array[i])
+       for i in range(len(signal_amplitudes_on_freq_array))])
 print("freq")
 print(test_true_amplitudes_on_freq_array)
 print("r_ampl")
 print(r_amplitudes_array)
 
+# stego-signal 10 freq  sin (2 for work)
+hidden = [get_signal_with_freq(all_work_freq, yinterp[n], amplitudes_array_for_adding) for n in range(data_size)]
 
-
-
-#hidden = [A * math.sin(om*yinterp[n]) for n in range(data_size)]
-hidden = [getSignalWithFreq(all_work_freq, yinterp[n], amplitudes_array_for_adding) for n in range(data_size)]
-hidden_before_transform = [getSignalWithFreq(all_work_freq, xvals_ext[n], amplitudes_array_for_adding) for n in range(data_size)]
+hidden_before_transform = [get_signal_with_freq(all_work_freq, xvals_ext[n], amplitudes_array_for_adding) for n in
+                           range(data_size)]
 
 plt.figure(1)
 plt.title('Hidden before transform')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-plt.plot(abs(array(fft(hidden_before_transform))[0: len(hidden_before_transform) // 44]),'r')
+plt.plot(abs(array(fft(hidden_before_transform))[0: len(hidden_before_transform) // 44]), 'r')
 plt.show()
 
 plt.figure(1)
 plt.title('Sin after transform of time')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-plt.plot((array(hidden)[0: 1000]),'r')
+plt.plot((array(hidden)[0: 1000]), 'r')
 plt.show()
 
 mix = (hidden + sound) // 2
@@ -248,31 +364,30 @@ mix = (hidden + sound) // 2
 output_signal = array(mix).astype("h")
 wavfile.write('with_mix_250.wav', fs, output_signal)
 
-
-c = fft(mix) # calculate fourier transform (complex numbers list)
-
-d = len(c) // 2  # you only need half of the fft list (real signal symmetry)
-
+c = fft(mix)  # calculate fourier transform (complex numbers list)
+d = len(c) // 2  # rewrite d caused by c (meaning: you only need half of the fft list (real signal symmetry))
 
 plt.figure(2)
 plt.title('Fourier transform on sound with sin')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-plt.plot(abs(c[nu*Ts-100:nu*Ts+100]),'r')
+plt.plot(abs(c[nu * Ts - 100:nu * Ts + 100]), 'r')
 plt.show()
 
+'''
+Перекодировка сигнала
+'''
 convert_to_mp3()
 convert_to_wav()
 
-fs, sound_after_converting_wav_mp3 = wavfile.read('./output/result_file.wav') # load the data
+fs, sound_after_converting_wav_mp3 = wavfile.read('./output/result_file.wav')
 
 input_sound_length = len(sound_after_converting_wav_mp3)
 graph_length = input_sound_length // 22
 
-
 mix_rev_after_convering = interpolaite(y_rev, xvals, sound_after_converting_wav_mp3)
 mix_rev = interpolaite(y_rev, xvals, mix)
-hidden_rev =  interpolaite(y_rev, xvals, hidden)
+hidden_rev = interpolaite(y_rev, xvals, hidden)
 
 length_mix_rev = len(mix_rev_after_convering)
 
@@ -285,8 +400,12 @@ mix_fft = fft(mix)
 sound_fft = fft(sound)
 hidden_fft = fft(hidden)
 
-true_level = abs(mix_rev_converted_fft[2*Ts*all_work_freq[-1]])
-false_level = abs(mix_rev_converted_fft[2*Ts*all_work_freq[-2]])
+'''
+После преобразования Фурье смешанного сиганла, вычисляем значения амплитуд сигналов по служеьным синусоидам для 0 и 1
+'''
+
+true_level = abs(mix_rev_converted_fft[2 * Ts * all_work_freq[-1]])
+false_level = abs(mix_rev_converted_fft[2 * Ts * all_work_freq[-2]])
 threshold_level = (true_level + false_level) / 2
 
 print("threshold level data")
@@ -295,64 +414,68 @@ print(false_level)
 print(threshold_level)
 
 for i in range(len(all_provided_bits)):
-    print("mix_rev_on","{" + str(i)  + "}" + " ",abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]))
+    print("mix_rev_on", "{" + str(i) + "}" + " ", abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]))
 
-decoded_array = [abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]) > threshold_level for i in range(len(all_provided_bits))]
+'''
+Распознаем переданную информацию имея ключи - значения амплитуд для 0 и 1
+'''
+decoded_array = [abs(mix_rev_converted_fft[2 * Ts * all_work_freq[i]]) > threshold_level for i in
+                 range(len(all_provided_bits))]
 
+print("Decoded array of secret message bits:")
 print(decoded_array)
 
-plt.subplot(3,3,1)
+plt.subplot(3, 3, 1)
 plt.title('Mix')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-#plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(mix_fft[0:  graph_length]),'r')
+# plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
+plt.plot(abs(mix_fft[0:  graph_length]), 'r')
 
-plt.subplot(3,3,2)
+plt.subplot(3, 3, 2)
 plt.title('Sound')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-#plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(sound_fft[0:  graph_length]),'r')
+# plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
+plt.plot(abs(sound_fft[0:  graph_length]), 'r')
 
-plt.subplot(3,3,3)
+plt.subplot(3, 3, 3)
 plt.title('Hidden')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-#plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(hidden_fft[0:  graph_length]),'r')
+# plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
+plt.plot(abs(hidden_fft[0:  graph_length]), 'r')
 
-
-plt.subplot(3,3,4)
+plt.subplot(3, 3, 4)
 plt.title('Fourier transform on reversed time sound with sin')
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-#plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(mix_rev_converted_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
-#plt.plot(abs(mix_rev_converted_fft[0:  graph_length]),'r')
+# plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
+plt.plot(abs(mix_rev_converted_fft[2 * Ts * nu - 100:  2 * Ts * nu + 100]), 'r')
+# plt.plot(abs(mix_rev_converted_fft[0:  graph_length]),'r')
 
 
-plt.subplot(3,3,5)
+plt.subplot(3, 3, 5)
 plt.title("Mix rev")
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-#plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-plt.plot(abs(mix_rev_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
-#plt.plot(abs(mix_rev_fft[0:  graph_length]),'r')
+# plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
+plt.plot(abs(mix_rev_fft[2 * Ts * nu - 100:  2 * Ts * nu + 100]), 'r')
+# plt.plot(abs(mix_rev_fft[0:  graph_length]),'r')
 
-plt.subplot(3,3,6)
+plt.subplot(3, 3, 6)
 plt.title("Clear signal rev")
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-plt.plot(abs(sound_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-#plt.plot(abs(sound_rev_fft[0:  graph_length]),'r')
+plt.plot(abs(sound_rev_fft[(length_mix_rev // length) * nu * Ts - 100:(length_mix_rev // length) * nu * Ts + 100]), 'r')
+# plt.plot(abs(sound_rev_fft[0:  graph_length]),'r')
 
-plt.subplot(3,3,7)
+plt.subplot(3, 3, 7)
 plt.title("Hidden rev")
 plt.xlabel('k')
 plt.ylabel('Amplitude')
-#plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
-#plt.plot(abs(hidden_rev_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
-plt.plot(abs(hidden_rev_fft[0:  graph_length]),'r')
+# plt.plot(abs(mix_rev_fft[(length_mix_rev // length)*nu*Ts-100:(length_mix_rev // length)*nu*Ts+100]),'r')
+# plt.plot(abs(hidden_rev_fft[2*Ts*nu - 100:  2*Ts*nu  + 100]),'r')
+plt.plot(abs(hidden_rev_fft[0:  graph_length]), 'r')
 
 plt.show()
